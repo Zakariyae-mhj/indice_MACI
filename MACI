@@ -1,0 +1,41 @@
+MACI : Moisture-Adjusted Chlorophyll Index
+
+// استدعاء منطقة الدراسة
+var zone = ee.FeatureCollection('projects/numeric-ocean-469211-b2/assets/ZONEindice');
+
+// تحميل صورة Sentinel-2
+var s2 = ee.ImageCollection("COPERNICUS/S2_SR")
+  .filterBounds(zone)                 
+  .filterDate('2022-01-01','2022-12-31')  
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',20))
+  .map(function(img){ return img.clip(zone); }) // قص الصورة على المنطقة
+  .median(); // تكوين صورة ميديان
+
+// مؤشرات مساعدة
+var NDRE2 = s2.normalizedDifference(['B8','B6']).rename('NDRE2'); // NIR - RE2
+var MSI   = s2.select('B11').divide(s2.select('B8')).rename('MSI'); // Moisture Stress Index
+
+// حساب MACI = NDRE2 / (1 + MSI)
+var maci = NDRE2.divide(MSI.add(1)).rename('MACI');
+
+// عرض الخريطة
+Map.centerObject(zone, 10);
+Map.addLayer(maci, {min:0, max:1, palette:['brown','yellow','green']}, 'MACI');
+
+// استخراج المتوسط داخل المجال
+var maci_mean = maci.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: zone,
+  scale: 10,
+  maxPixels: 1e13
+});
+print('MACI mean:', maci_mean);
+
+// تصدير النتيجة
+Export.image.toDrive({
+  image: maci,
+  description: 'MACI_index_clipped',
+  scale: 10,
+  region: zone,
+  maxPixels: 1e13
+});
